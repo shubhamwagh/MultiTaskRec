@@ -75,14 +75,26 @@ class MultiTaskNet(nn.Module):
 
         self.embedding_dim = embedding_dim
 
-        #********************************************************
-        #******************* YOUR CODE HERE *********************
-        #********************************************************
+        self.users_embedding = ScaledEmbedding(num_embeddings=num_users, embedding_dim=self.embedding_dim,
+                                               sparse=sparse)
+        self.users_bias = ZeroEmbedding(num_embeddings=num_users, embedding_dim=1)
 
+        self.items_embedding = ScaledEmbedding(num_embeddings=num_items, embedding_dim=self.embedding_dim,
+                                               sparse=sparse)
+        self.items_bias = ZeroEmbedding(num_embeddings=num_items, embedding_dim=1)
 
-        #********************************************************
-        #********************************************************
-        #********************************************************
+        self.mlp = nn.Sequential(
+            nn.Linear(in_features=layer_sizes[0], out_features=layer_sizes[1]),
+            nn.ReLU(),
+            nn.Linear(in_features=layer_sizes[1], out_features=1)
+        )
+
+        if embedding_sharing:
+            self.U_reg = self.users_embedding
+            self.Q_reg = self.items_embedding
+        else:
+            self.U_reg = ScaledEmbedding(num_embeddings=num_users, embedding_dim=self.embedding_dim, sparse=sparse)
+            self.Q_reg = ScaledEmbedding(num_embeddings=num_items, embedding_dim=self.embedding_dim, sparse=sparse)
 
     def forward(self, user_ids, item_ids):
         """
@@ -104,16 +116,22 @@ class MultiTaskNet(nn.Module):
         score: tensor
             Tensor of user-item score predictions of shape (batch,)
         """
-        #********************************************************
-        #******************* YOUR CODE HERE *********************
-        #********************************************************
 
+        u = self.users_embedding(user_ids)  # (None, embedding_dim)
+        q = self.items_embedding(item_ids)  # (None, embedding_dim)
 
-        #********************************************************
-        #********************************************************
-        #********************************************************
-        ## Make sure you return predictions and scores of shape (batch,)
+        a = self.users_bias(user_ids)  # (None, 1)
+        b = self.items_bias(item_ids)  # (None, 1)
+
+        predictions = torch.sum(u * q, dim=-1) + torch.squeeze(a, dim=-1) + torch.squeeze(b, dim=-1)
+
+        u_reg = self.U_reg(user_ids)  # (None, embedding_dim)
+        q_reg = self.Q_reg(item_ids)  # (None, embedding_dim)
+        score = self.mlp(torch.cat([u_reg, q_reg, u_reg * q_reg], dim=-1))
+        score = torch.squeeze(score, dim=-1)
+
+        # Make sure you return predictions and scores of shape (batch,)
         if (len(predictions.shape) > 1) or (len(score.shape) > 1):
             raise ValueError("Check your shapes!")
-        
+
         return predictions, score
