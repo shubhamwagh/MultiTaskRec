@@ -1,9 +1,5 @@
 import argparse
-
-from dataset import get_movielens_dataset
-from evaluation import mrr_score, mse_score
-from models import MultiTaskNet
-from multitask import MultitaskModel
+import multi_task_rec as mtr
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -11,28 +7,29 @@ def main(config):
     print(config)
     writer = SummaryWriter(config.logdir)
 
-    dataset = get_movielens_dataset(variant='100K')
+    dataset = mtr.get_movielens_dataset(variant='100K')
     train, test = dataset.random_train_test_split(test_fraction=config.test_fraction)
 
-    net = MultiTaskNet(train.num_users,
-                       train.num_items,
-                       embedding_sharing=config.shared_embeddings)
-    model = MultitaskModel(interactions=train,
-                           representation=net,
-                           factorization_weight=config.factorization_weight,
-                           regression_weight=config.regression_weight)
+    net = mtr.MultiTaskNet(train.num_users,
+                           train.num_items,
+                           embedding_sharing=config.shared_embeddings)
+    model = mtr.MultitaskModel(interactions=train,
+                               representation=net,
+                               factorization_weight=config.factorization_weight,
+                               regression_weight=config.regression_weight)
 
     for epoch in range(config.epochs):
         factorization_loss, score_loss, joint_loss = model.fit(train)
-        mrr = mrr_score(model, test, train)
-        mse = mse_score(model, test)
+        mrr = mtr.mrr_score(model, test, train)
+        mse = mtr.mse_score(model, test)
         writer.add_scalar('training/Factorization Loss', factorization_loss, epoch)
         writer.add_scalar('training/MSE', score_loss, epoch)
         writer.add_scalar('training/Joint Loss', joint_loss, epoch)
         writer.add_scalar('eval/Mean Reciprocal Rank', mrr, epoch)
         writer.add_scalar('eval/MSE', mse, epoch)
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--test_fraction', type=float, default=0.05)
     parser.add_argument('--epochs', type=int, default=200)
